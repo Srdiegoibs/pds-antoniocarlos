@@ -146,6 +146,111 @@ def remover_dono(dono_id):
 # - o GET /pets precisa usar JOIN para trazer o nome do dono
 # - o GET /pets aceita o filtro opcional ?dono_id=
 # ---------------------------------------------------------------
+@app.route("/pets", methods=["GET"])
+def listar_e_filtrar_pets():
+    conexao = conectar()
+    cursor = conexao.cursor()
+    dono_id = request.args.get("dono_id")
+    query_base = """
+        SELECT pets.id, pets.nome, pets.especie, pets.idade, pets.dono_id, donos.nome
+        FROM pets
+        INNER JOIN donos ON pets.dono_id = donos.id
+    """
+    if dono_id is not None:
+        cursor.execute(query_base + " WHERE pets.dono_id = ?", (dono_id,))
+    else:
+        cursor.execute(query_base)
+    linhas = cursor.fetchall()
+    conexao.close()
+    pets = []
+    for linha in linhas:
+        pets.append({
+            "id": linha[0],
+            "nome": linha[1],
+            "especie": linha[2],
+            "idade": linha[3],
+            "dono_id": linha[4],
+            "dono_nome": linha[5]
+        })
+    return jsonify(pets), 200
+
+@app.route("/pets/<int:pet_id>", methods=["GET"])
+def buscar_pet(pet_id):
+    conexao = conectar()
+    cursor = conexao.cursor()
+    cursor.execute("""
+        SELECT pets.id, pets.nome, pets.especie, pets.idade, pets.dono_id, donos.nome
+        FROM pets
+        INNER JOIN donos ON pets.dono_id = donos.id
+        WHERE pets.id = ?
+    """, (pet_id,))
+    linha = cursor.fetchone()
+    conexao.close()
+    if linha is None:
+        return jsonify({"erro": "Pet nao encontrado"}), 404
+    pet = {
+        "id": linha[0],
+        "nome": linha[1],
+        "especie": linha[2],
+        "idade": linha[3],
+        "dono_id": linha[4],
+        "dono_nome": linha[5]
+    }
+    return jsonify(pet), 200
+
+@app.route("/pets", methods=["POST"])
+def cadastrar_pet():
+    dados = request.get_json()
+    if not dados or "nome" not in dados or "especie" not in dados or "idade" not in dados or "dono_id" not in dados:
+        return jsonify({"erro": "Informe nome, especie, idade e dono_id"}), 400
+    conexao = conectar()
+    cursor = conexao.cursor()
+    cursor.execute("""
+        INSERT INTO pets (nome, especie, idade, dono_id)
+        VALUES (?, ?, ?, ?)
+    """, (dados["nome"], dados["especie"], dados["idade"], dados["dono_id"]))
+    conexao.commit()
+    novo_id = cursor.lastrowid
+    conexao.close()
+    resposta = {
+        "id": novo_id,
+        "nome": dados["nome"],
+        "especie": dados["especie"],
+        "idade": dados["idade"],
+        "dono_id": dados["dono_id"]
+    }
+    return jsonify(resposta), 201
+
+@app.route("/pets/<int:pet_id>", methods=["PUT"])
+def atualizar_pet(pet_id):
+    dados = request.get_json()
+    if not dados or "nome" not in dados or "especie" not in dados or "idade" not in dados or "dono_id" not in dados:
+        return jsonify({"erro": "Informe nome, especie, idade e dono_id"}), 400
+    conexao = conectar()
+    cursor = conexao.cursor()
+    cursor.execute("""
+        UPDATE pets
+        SET nome = ?, especie = ?, idade = ?, dono_id = ?
+        WHERE id = ?
+    """, (dados["nome"], dados["especie"], dados["idade"], dados["dono_id"], pet_id))
+    conexao.commit()
+    linhas_afetadas = cursor.rowcount
+    conexao.close()
+    if linhas_afetadas == 0:
+        return jsonify({"erro": "Pet nao encontrado"}), 404
+    return jsonify({"mensagem": "Pet atualizado com sucesso"}), 200
+
+@app.route("/pets/<int:pet_id>", methods=["DELETE"])
+def remover_pet(pet_id):
+    conexao = conectar()
+    cursor = conexao.cursor()
+    cursor.execute("DELETE FROM pets WHERE id = ?", (pet_id,))
+    conexao.commit()
+    linhas_afetadas = cursor.rowcount
+    conexao.close()
+    if linhas_afetadas == 0:
+        return jsonify({"erro": "Pet nao encontrado"}), 404
+    return jsonify({"mensagem": "Pet removido com sucesso"}), 200
 
 
 if __name__ == "__main__":
